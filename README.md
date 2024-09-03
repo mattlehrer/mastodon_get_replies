@@ -29,7 +29,7 @@ FediFetcher makes use of the Mastodon API. It'll run against any instance implem
 
 FediFetcher will pull in posts and profiles from any servers running the following software: 
 
-- Servers that implement the Mastodon API: Mastodon, Pleroma, Akkoma, Pixelfed, Hometown, Iceshrimp
+- Servers that implement the Mastodon API: Mastodon, Pleroma, Akkoma, Pixelfed, Hometown, Iceshrimp, Iceshrimp.NET
 - Servers that implement the Misskey API: Misskey, Calckey, Firefish, Foundkey, Sharkey
 - Lemmy
 - Peertube
@@ -102,7 +102,7 @@ FediFetcher is also available in a pre-packaged container, [FediFetcher](https:/
 
 Persistent files are stored in `/app/artifacts` within the container, so you may want to map this to a local folder on your system.
 
-An [example Kubernetes CronJob](./examples/k8s-cronjob.yaml) for running the container is included in the `examples` folder.
+An [example Kubernetes CronJob](./examples/k8s-cronjob.md) for running the container is included in the `examples` folder.
 
 An [example Docker Compose Script](./examples/docker-compose.yaml) for running the container periodically is included in the `examples` folder.
 
@@ -130,14 +130,28 @@ FediFetcher has quite a few configuration options, so here is my quick configura
 
 If you configure FediFetcher this way, it'll fetch missing remote replies to the last 200 posts in your home timeline. It'll additionally backfill profiles of the last 80 people you followed, and of every account who appeared in your notifications during the past hour.
 
+#### Providing configuration options
+
+Unless you are running FediFetcher as GitHub Action (please see above for instructions on configuring FediFetcher with GitHub Actions), there are a three ways in which you provide configuration options:
+
+1. Configuration File: <br>
+   You can provide a `json` file with configuration options. Then run the script like so: <br>`python find_posts.py -c=/path/to/config.json`
+2. Command line flags: <br>
+   You can provide all options directly in the command line. Simply run the script with te correct options supplied: <br>`python find_posts.py --server=example.com --home-timeline-length=80`.
+3. Environment variables: <br>
+   You can supply your options as environment variables. To do so take the option name from the table below, replace `-` with `_` and prefix with `FF_`. For example `max-favourites` can be set via `FF_MAX_FAVOURITES`. (Environment variables are not case sensitive.)
+
+
+
 #### Advanced Options
 
-Please find the list of all configuration options, including descriptions, below:
+Below is a list of all configuration options, including their descriptions.
 
 Option | Required? | Notes |
 |:----------------------------------------------------|-----------|:------|
-|`access-token` | Yes | The access token. If using GitHub action, this needs to be provided as a Secret called  `ACCESS_TOKEN`. If running as a cron job or a container, you can supply this option as array, to [fetch posts for multiple users](https://blog.thms.uk/2023/04/muli-user-support-for-fedifetcher) on your instance. |
+|`access-token` | Yes | The access token. If using GitHub action, this needs to be provided as a Secret called  `ACCESS_TOKEN`. If running as a cron job or a container, you can supply this option as array, to [fetch posts for multiple users](https://blog.thms.uk/2023/04/muli-user-support-for-fedifetcher) on your instance. To set tokens for multiple users using environment variables, define multiple environment variables with `FF_ACCESS_TOKEN` prefix, eg. `FF_ACCESS_TOKEN_USER1=…` and `FF_ACCESS_TOKEN_USER2=…`|
 |`server`|Yes|The domain only of your mastodon server (without `https://` prefix) e.g. `mstdn.thms.uk`. |
+|`instance-blocklist` | No | A comma seperated list of instance domains that FediFetcher should never attempt to connect to. 
 |`home-timeline-length` | No | Provide to fetch remote replies to posts in the API-Key owner's home timeline. Determines how many posts we'll fetch replies for. Recommended value: `200`.
 | `max-bookmarks` | No | Provide to fetch remote replies to any posts you have bookmarked. Determines how many of your bookmarks you want to get replies to. Recommended value: `80`. Requires an access token with `read:bookmarks` scope.
 | `max-favourites` | No | Provide to fetch remote replies to any posts you have favourited. Determines how many of your favourites you want to get replies to. Recommended value: `40`. Requires an access token with `read:favourites` scope.

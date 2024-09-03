@@ -16,12 +16,12 @@ import uuid
 import defusedxml.ElementTree as ET
 import urllib.robotparser
 from urllib.parse import urlparse
-import hashlib
+import xxhash
 
 logger = logging.getLogger("FediFetcher")
 robotParser = urllib.robotparser.RobotFileParser()
 
-VERSION = "7.1.3"
+VERSION = "7.1.7"
 
 argparser=argparse.ArgumentParser()
 
@@ -53,6 +53,7 @@ argparser.add_argument('--max-list-length', required=False, type=int, default=10
 argparser.add_argument('--max-list-accounts', required=False, type=int, default=10, help="Determines how many accounts we'll backfill for in each list. This will be ignored, unless you also provide `from-lists = 1`. Set to `0` if you only want to fetch replies in lists.")
 argparser.add_argument('--log-level', required=False, default="DEBUG", help="Severity of events to log (DEBUG|INFO|WARNING|ERROR|CRITICAL)")
 argparser.add_argument('--log-format', required=False, type=str, default="%(asctime)s: %(message)s",help="Specify the log format")
+argparser.add_argument('--instance-blocklist', required=False, type=str, default="",help="A comma-seperated array of instances that FediFetcher should never try to connect to")
 
 def get_notification_users(server, access_token, known_users, max_age):
     since = datetime.now(datetime.now().astimezone().tzinfo) - timedelta(hours=max_age)
@@ -99,7 +100,7 @@ def add_user_posts(server, access_token, followings, known_followings, all_known
                             failed += 1
                 logger.info(f"Added {count} posts for user {user['acct']} with {failed} errors")
                 if failed == 0:
-                    known_followings.add(user['acct'])
+                    known_followings.add(user['acct']) 
                     all_known_users.add(user['acct'])
 
 def add_post_with_context(post, server, access_token, seen_urls, seen_hosts):
@@ -1076,7 +1077,7 @@ def get_paginated_mastodon(url, max, headers = {}, timeout = 0, max_tries = 5):
     return result
 
 def get_robots_txt_cache_path(robots_url):
-    hash = hashlib.sha256(robots_url.encode('utf-8'))
+    hash = xxhash.xxh128(robots_url.encode('utf-8'))
     return os.path.join(arguments.state_dir, f'robots-{hash.hexdigest()}.txt')
 
 def get_cached_robots(robots_url):
@@ -1119,6 +1120,10 @@ def get_robots_from_url(robots_url):
 def can_fetch(user_agent, url):
     parsed_uri = urlparse(url)
     robots_url = '{uri.scheme}://{uri.netloc}/robots.txt'.format(uri=parsed_uri)
+
+    if parsed_uri.netloc in INSTANCE_BLOCKLIST:
+        # Never connect to these locations
+        raise Exception(f"Connecting to {parsed_uri.netloc} is prohibited by the configured blocklist")
 
     robotsTxt = get_robots_from_url(robots_url)
     if isinstance(robotsTxt, bool):
@@ -1391,7 +1396,7 @@ def get_server_info(server, seen_hosts):
 def set_server_apis(server):
     # support for new server software should be added here
     software_apis = {
-        'mastodonApiSupport': ['mastodon', 'pleroma', 'akkoma', 'pixelfed', 'hometown', 'iceshrimp'],
+        'mastodonApiSupport': ['mastodon', 'pleroma', 'akkoma', 'pixelfed', 'hometown', 'iceshrimp', 'Iceshrimp.NET'],
         'misskeyApiSupport': ['misskey', 'calckey', 'firefish', 'foundkey', 'sharkey'],
         'lemmyApiSupport': ['lemmy'],
         'peertubeApiSupport': ['peertube']
@@ -1488,6 +1493,29 @@ if __name__ == "__main__":
             logger.critical(f"Config file {arguments.config} doesn't exist")
             sys.exit(1)
 
+    for envvar, value in os.environ.items():
+        envvar = envvar.lower()
+        if envvar.startswith("ff_") and not envvar.startswith("ff_access_token"):
+            envvar = envvar[3:]
+            # most settings are numerical
+            if envvar not in [
+                "server",
+                "lock_file",
+                "state_dir",
+                "on_start",
+                "on_done",
+                "on_fail",
+                "log_level",
+                "log_format",
+                "instance_blocklist"
+            ]:
+                value = int(value)
+            setattr(arguments, envvar, value)
+
+    # remains special-cased for specifying multiple tokens
+    if tokens := [token for envvar, token in os.environ.items() if envvar.lower().startswith("ff_access_token")]:
+        arguments.access_token = tokens
+
     logger.info(f"Starting FediFetcher")
 
     if(arguments.server == None or arguments.access_token == None):
@@ -1550,6 +1578,7 @@ if __name__ == "__main__":
         SEEN_HOSTS_FILE = os.path.join(arguments.state_dir, "seen_hosts")
         RECENTLY_CHECKED_CONTEXTS_FILE = os.path.join(arguments.state_dir, 'recent_context')
 
+        INSTANCE_BLOCKLIST = [x.strip() for x in arguments.instance_blocklist.split(",")]
         ROBOTS_TXT = {}
 
         seen_urls = OrderedSet([])
